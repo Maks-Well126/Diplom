@@ -18,7 +18,7 @@ public class Player : MonoBehaviour
     private float pitch = 0f;
     
     public float minPitch = -30f;
-    public float maxPitch = 60f;
+    public float maxPitch = 40f;
     public float cameraDistance = 1f;
 
     void Start()
