@@ -159,6 +159,21 @@ public class CarController : MonoBehaviour
       WheelFrictionCurve RRwheelFriction;
       float RRWextremumSlip;
 
+    private Vector3 lastPlayerPosition; // Сохраняем последнюю позицию персонажа
+    private Quaternion lastPlayerRotation; // Сохраняем последний поворот персонажа
+
+    public Camera carCamera; // Камера машины
+    private Camera playerCamera; // Добавляем переменную для хранения камеры персонажа
+    public Transform exitPoint; // Точка выхода из машины
+
+    public float maxEnterDistance = 1f; // Максимальное расстояние для входа в машину
+   
+    private CharacterController characterController;
+    private MonoBehaviour vThirdPersonInputScript;
+    private Transform playerParent;
+    private Animator playerAnimator; // Добавляем ссылку на аниматор
+    private MonoBehaviour[] playerMovementScripts; // Для хранения всех скриптов движения
+
     // Start is called before the first frame update
     void Start()
     {
@@ -261,111 +276,127 @@ public class CarController : MonoBehaviour
           }
         }
 
+        // Убедимся, что камера машины изначально выключена
+        if (carCamera != null)
+        {
+            carCamera.gameObject.SetActive(false);
+        }
+
+        // Получаем компоненты у персонажа
+        if (player != null)
+        {
+            characterController = player.GetComponent<CharacterController>();
+            vThirdPersonInputScript = player.GetComponent("vThirdPersonInput") as MonoBehaviour;
+        }
     }
   public bool isOccupied = false;
   public bool playerNearby = false;
   public GameObject player;
     public Transform seatPosition; // Точка, куда сажать персонажа
-public Transform exitPosition; // Точка выхода из машины  
 
     // Update is called once per frame
     void Update()
-{
-    // Машина не едет, пока персонаж не сел
-    if (!isOccupied)
     {
+        // Машина не едет, пока персонаж не сел
+        if (!isOccupied)
+        {
+            AnimateWheelMeshes();
+            return;
+        }
+
+        // Постоянно обновляем позицию персонажа, пока он в машине
+        if (isOccupied && player != null)
+        {
+            player.transform.localPosition = Vector3.zero;
+            player.transform.localRotation = Quaternion.identity;
+        }
+
+        //CAR DATA
+        carSpeed = (2 * Mathf.PI * frontLeftCollider.radius * frontLeftCollider.rpm * 60) / 1000;
+        localVelocityX = transform.InverseTransformDirection(carRigidbody.linearVelocity).x;
+        localVelocityZ = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
+
+        //CAR PHYSICS
+        if (useTouchControls && touchControlsSetup){
+
+          if(throttlePTI.buttonPressed){
+            CancelInvoke("DecelerateCar");
+            deceleratingCar = false;
+            GoForward();
+          }
+          if(reversePTI.buttonPressed){
+            CancelInvoke("DecelerateCar");
+            deceleratingCar = false;
+            GoReverse();
+          }
+
+          if(turnLeftPTI.buttonPressed){
+            TurnLeft();
+          }
+          if(turnRightPTI.buttonPressed){
+            TurnRight();
+          }
+          if(handbrakePTI.buttonPressed){
+            CancelInvoke("DecelerateCar");
+            deceleratingCar = false;
+            Handbrake();
+          }
+          if(!handbrakePTI.buttonPressed){
+            RecoverTraction();
+          }
+          if((!throttlePTI.buttonPressed && !reversePTI.buttonPressed)){
+            ThrottleOff();
+          }
+          if((!reversePTI.buttonPressed && !throttlePTI.buttonPressed) && !handbrakePTI.buttonPressed && !deceleratingCar){
+            InvokeRepeating("DecelerateCar", 0f, 0.1f);
+            deceleratingCar = true;
+          }
+          if(!turnLeftPTI.buttonPressed && !turnRightPTI.buttonPressed && steeringAxis != 0f){
+            ResetSteeringAngle();
+          }
+
+        }else{
+
+          if(Input.GetKey(KeyCode.W)){
+            CancelInvoke("DecelerateCar");
+            deceleratingCar = false;
+            GoForward();
+          }
+          if(Input.GetKey(KeyCode.S)){
+            CancelInvoke("DecelerateCar");
+            deceleratingCar = false;
+            GoReverse();
+          }
+
+          if(Input.GetKey(KeyCode.A)){
+            TurnLeft();
+          }
+          if(Input.GetKey(KeyCode.D)){
+            TurnRight();
+          }
+          if(Input.GetKey(KeyCode.Space)){
+            CancelInvoke("DecelerateCar");
+            deceleratingCar = false;
+            Handbrake();
+          }
+          if(Input.GetKeyUp(KeyCode.Space)){
+            RecoverTraction();
+          }
+          if((!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W))){
+            ThrottleOff();
+          }
+          if((!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W)) && !Input.GetKey(KeyCode.Space) && !deceleratingCar){
+            InvokeRepeating("DecelerateCar", 0f, 0.1f);
+            deceleratingCar = true;
+          }
+          if(!Input.GetKey(KeyCode.A) && !Input.GetKey(KeyCode.D) && steeringAxis != 0f){
+            ResetSteeringAngle();
+          }
+
+        }
+
         AnimateWheelMeshes();
-        return;
     }
-
-    //CAR DATA
-    carSpeed = (2 * Mathf.PI * frontLeftCollider.radius * frontLeftCollider.rpm * 60) / 1000;
-    localVelocityX = transform.InverseTransformDirection(carRigidbody.linearVelocity).x;
-    localVelocityZ = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
-
-    //CAR PHYSICS
-    if (useTouchControls && touchControlsSetup){
-
-      if(throttlePTI.buttonPressed){
-        CancelInvoke("DecelerateCar");
-        deceleratingCar = false;
-        GoForward();
-      }
-      if(reversePTI.buttonPressed){
-        CancelInvoke("DecelerateCar");
-        deceleratingCar = false;
-        GoReverse();
-      }
-
-      if(turnLeftPTI.buttonPressed){
-        TurnLeft();
-      }
-      if(turnRightPTI.buttonPressed){
-        TurnRight();
-      }
-      if(handbrakePTI.buttonPressed){
-        CancelInvoke("DecelerateCar");
-        deceleratingCar = false;
-        Handbrake();
-      }
-      if(!handbrakePTI.buttonPressed){
-        RecoverTraction();
-      }
-      if((!throttlePTI.buttonPressed && !reversePTI.buttonPressed)){
-        ThrottleOff();
-      }
-      if((!reversePTI.buttonPressed && !throttlePTI.buttonPressed) && !handbrakePTI.buttonPressed && !deceleratingCar){
-        InvokeRepeating("DecelerateCar", 0f, 0.1f);
-        deceleratingCar = true;
-      }
-      if(!turnLeftPTI.buttonPressed && !turnRightPTI.buttonPressed && steeringAxis != 0f){
-        ResetSteeringAngle();
-      }
-
-    }else{
-
-      if(Input.GetKey(KeyCode.W)){
-        CancelInvoke("DecelerateCar");
-        deceleratingCar = false;
-        GoForward();
-      }
-      if(Input.GetKey(KeyCode.S)){
-        CancelInvoke("DecelerateCar");
-        deceleratingCar = false;
-        GoReverse();
-      }
-
-      if(Input.GetKey(KeyCode.A)){
-        TurnLeft();
-      }
-      if(Input.GetKey(KeyCode.D)){
-        TurnRight();
-      }
-      if(Input.GetKey(KeyCode.Space)){
-        CancelInvoke("DecelerateCar");
-        deceleratingCar = false;
-        Handbrake();
-      }
-      if(Input.GetKeyUp(KeyCode.Space)){
-        RecoverTraction();
-      }
-      if((!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W))){
-        ThrottleOff();
-      }
-      if((!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W)) && !Input.GetKey(KeyCode.Space) && !deceleratingCar){
-        InvokeRepeating("DecelerateCar", 0f, 0.1f);
-        deceleratingCar = true;
-      }
-      if(!Input.GetKey(KeyCode.A) && !Input.GetKey(KeyCode.D) && steeringAxis != 0f){
-        ResetSteeringAngle();
-      }
-
-    }
-
-    AnimateWheelMeshes();
-}
-
-// Добавь в класс следующие методы:
 
 void OnTriggerEnter(Collider other)
 {
@@ -373,6 +404,8 @@ void OnTriggerEnter(Collider other)
     {
         playerNearby = true;
         player = other.gameObject;
+        // Сохраняем ссылку на камеру персонажа сразу при входе в триггер
+        playerCamera = player.GetComponentInChildren<Camera>();
         Debug.Log("Нажми E, чтобы сесть в машину");
     }
 }
@@ -386,17 +419,100 @@ void OnTriggerExit(Collider other)
     }
 }
 
+// Функция для включения/отключения видимости персонажа
+void SetPlayerVisible(bool visible)
+{
+    foreach (var renderer in player.GetComponentsInChildren<Renderer>())
+        renderer.enabled = visible;
+}
+
+// Функция для установки прозрачности персонажа
+void SetPlayerTransparency(float alpha)
+{
+    foreach (var renderer in player.GetComponentsInChildren<Renderer>())
+    {
+        foreach (var mat in renderer.materials)
+        {
+            Color color = mat.color;
+            color.a = alpha;
+            mat.color = color;
+            // Важно: материал должен поддерживать прозрачность
+            mat.SetFloat("_Mode", 3);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetInt("_ZWrite", 0);
+            mat.DisableKeyword("_ALPHATEST_ON");
+            mat.EnableKeyword("_ALPHABLEND_ON");
+            mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            mat.renderQueue = 3000;
+        }
+    }
+}
+
 void LateUpdate()
 {
     // Посадка в машину
     if (playerNearby && !isOccupied && Input.GetKeyDown(KeyCode.E))
     {
-        isOccupied = true;
         if (player != null)
         {
-            player.SetActive(false); // отключаем модельку
+            float distance = Vector3.Distance(player.transform.position, transform.position);
+            if (distance > maxEnterDistance)
+            {
+                Debug.Log("Слишком далеко от машины");
+                return;
+            }
+
+            isOccupied = true;
+            if (playerCamera != null)
+                playerCamera.gameObject.SetActive(false);
+            if (carCamera != null)
+                carCamera.gameObject.SetActive(true);
+
+            // Сохраняем оригинального родителя персонажа
+            playerParent = player.transform.parent;
+            // Прикрепляем персонажа к точке выхода
+            player.transform.SetParent(exitPoint);
+
+            // Перемещаем персонажа на точку выхода и делаем полностью прозрачным
+            player.transform.localPosition = Vector3.zero;
+            player.transform.localRotation = Quaternion.identity;
+            SetPlayerTransparency(0f);
+
+            // Отключаем все компоненты управления персонажем
+            if (characterController != null)
+            {
+                characterController.enabled = false;
+            }
+
+            // Отключаем все скрипты движения
+            playerMovementScripts = player.GetComponents<MonoBehaviour>();
+            foreach (var script in playerMovementScripts)
+            {
+                if (script != this && script.enabled)
+                {
+                    script.enabled = false;
+                }
+            }
+
+            // Отключаем аниматор
+            playerAnimator = player.GetComponent<Animator>();
+            if (playerAnimator != null)
+            {
+                playerAnimator.enabled = false;
+            }
+
+            // Останавливаем все физические силы на персонаже
+            Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
+            if (playerRigidbody != null)
+            {
+                playerRigidbody.linearVelocity = Vector3.zero;
+                playerRigidbody.angularVelocity = Vector3.zero;
+                playerRigidbody.isKinematic = true;
+            }
+
+            Debug.Log("Персонаж сел в машину");
         }
-        Debug.Log("Персонаж сел в машину");
     }
 
     // Выход из машины
@@ -405,15 +521,52 @@ void LateUpdate()
         isOccupied = false;
         if (player != null)
         {
-            player.transform.position = exitPosition.position;
-            player.transform.rotation = exitPosition.rotation;
-            player.SetActive(true); // включаем модельку
+            // Возвращаем персонажа к оригинальному родителю
+            player.transform.SetParent(playerParent);
+            
+            // Делаем персонажа полностью видимым
+            SetPlayerTransparency(1f);
+
+            // Включаем все компоненты управления обратно
+            if (characterController != null)
+            {
+                characterController.enabled = true;
+            }
+
+            // Включаем все скрипты движения
+            if (playerMovementScripts != null)
+            {
+                foreach (var script in playerMovementScripts)
+                {
+                    if (script != this)
+                    {
+                        script.enabled = true;
+                    }
+                }
+            }
+
+            // Включаем аниматор
+            if (playerAnimator != null)
+            {
+                playerAnimator.enabled = true;
+            }
+
+            // Восстанавливаем физику персонажа
+            Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
+            if (playerRigidbody != null)
+            {
+                playerRigidbody.isKinematic = false;
+            }
+
+            if (playerCamera != null)
+                playerCamera.gameObject.SetActive(true);
+            if (carCamera != null)
+                carCamera.gameObject.SetActive(false);
+
+            Debug.Log("Персонаж вышел из машины");
         }
-        Debug.Log("Персонаж вышел из машины");
     }
 }
-
-
 
    
 
@@ -563,7 +716,7 @@ void LateUpdate()
       if(localVelocityZ < -1f){
         Brakes();
       }else{
-        if(Mathf.RoundToInt(carSpeed) < maxSpeed){
+        if(Math.Round(carSpeed) < maxSpeed){
           //Apply positive torque in all wheels to go forward if maxSpeed has not been reached.
           frontLeftCollider.brakeTorque = 0;
           frontLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
@@ -607,7 +760,7 @@ void LateUpdate()
       if(localVelocityZ > 1f){
         Brakes();
       }else{
-        if(Mathf.Abs(Mathf.RoundToInt(carSpeed)) < maxReverseSpeed){
+        if(Math.Abs(Math.Round(carSpeed)) < maxReverseSpeed){
           //Apply negative torque in all wheels to go in reverse if maxReverseSpeed has not been reached.
           frontLeftCollider.brakeTorque = 0;
           frontLeftCollider.motorTorque = (accelerationMultiplier * 50f) * throttleAxis;
