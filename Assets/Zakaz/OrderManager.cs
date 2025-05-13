@@ -7,6 +7,15 @@ using TMPro;
 public class OrderManager : MonoBehaviour
 {
     [System.Serializable]
+    public class VehicleUpgrade
+    {
+        public string upgradeName;
+        public int cost;
+        public float multiplier;
+        public bool isPurchased;
+    }
+
+    [System.Serializable]
     public class Order
     {
         public string orderName;
@@ -55,6 +64,23 @@ public class OrderManager : MonoBehaviour
     private float timeUntilNextOrder;
 
     private int pickupScore = 0; // Очки за взятие заказа
+
+    [Header("Progression Settings")]
+    public int pointsRequiredForVehicle = 1000; // Очки для разблокировки машины
+    public int baseUpgradeCost = 300; // Базовая стоимость улучшения
+    public int maxSpeedLevel = 5; // Максимальный уровень скорости
+    public int speedIncreasePerLevel = 10; // Увеличение скорости за уровень
+    public int currentSpeedLevel = 0; // Текущий уровень скорости
+    public bool isVehicleUnlocked = false;
+    public GameObject vehicleObject; // Ссылка на объект машины
+    public GameObject playerObject; // Ссылка на объект игрока
+
+    [Header("UI Elements")]
+    public TextMeshProUGUI vehicleUnlockText; // Текст для отображения прогресса разблокировки машины
+    public TextMeshProUGUI speedLevelText; // Текст для отображения текущего уровня скорости
+    public Button upgradeButton; // Кнопка улучшения скорости
+    public GameObject upgradeButtonObj; // GameObject кнопки улучшения
+    private bool isUpgradeMenuOpen = false;
 
     private void Start()
     {
@@ -109,6 +135,117 @@ public class OrderManager : MonoBehaviour
 
         UpdateUI();
         StartCoroutine(WaitForNewOrder());
+
+        // Инициализация системы прокачки
+        InitializeProgressionSystem();
+
+        // Настраиваем кнопку улучшения
+        if (upgradeButton != null)
+        {
+            upgradeButton.onClick.AddListener(UpgradeSpeed);
+        }
+    }
+
+    private void InitializeProgressionSystem()
+    {
+        // Скрываем машину в начале игры
+        if (vehicleObject != null)
+        {
+            vehicleObject.SetActive(false);
+        }
+
+        // Обновляем UI прокачки
+        UpdateProgressionUI();
+    }
+
+    private void UpdateProgressionUI()
+    {
+        if (vehicleUnlockText != null)
+        {
+            if (!isVehicleUnlocked)
+            {
+                vehicleUnlockText.text = $"До разблокировки машины: {totalScore}/{pointsRequiredForVehicle}";
+            }
+            else
+            {
+                vehicleUnlockText.text = "Машина разблокирована!";
+            }
+        }
+
+        // Обновляем текст уровня скорости
+        if (speedLevelText != null)
+        {
+            speedLevelText.text = $"Уровень скорости: {currentSpeedLevel}/{maxSpeedLevel}";
+        }
+
+        // Обновляем кнопку улучшения
+        UpdateUpgradeButton();
+    }
+
+    private void UpdateUpgradeButton()
+    {
+        if (upgradeButton != null && upgradeButtonObj != null)
+        {
+            // Показываем кнопку только если машина разблокирована и не достигнут максимальный уровень
+            bool canUpgrade = isVehicleUnlocked && currentSpeedLevel < maxSpeedLevel;
+            upgradeButtonObj.SetActive(canUpgrade);
+
+            if (canUpgrade)
+            {
+                int upgradeCost = CalculateUpgradeCost();
+                upgradeButton.interactable = totalScore >= upgradeCost;
+
+                // Обновляем текст кнопки
+                var buttonText = upgradeButton.GetComponentInChildren<TextMeshProUGUI>();
+                if (buttonText != null)
+                {
+                    buttonText.text = $"Улучшить скорость ({upgradeCost} очков)";
+                }
+            }
+        }
+    }
+
+    private int CalculateUpgradeCost()
+    {
+        // Стоимость увеличивается с каждым уровнем
+        return baseUpgradeCost * (currentSpeedLevel + 1);
+    }
+
+    public void UpgradeSpeed()
+    {
+        if (!isVehicleUnlocked || currentSpeedLevel >= maxSpeedLevel) return;
+
+        int upgradeCost = CalculateUpgradeCost();
+        if (totalScore < upgradeCost) return;
+
+        // Списываем очки
+        totalScore -= upgradeCost;
+        currentSpeedLevel++;
+
+        // Применяем улучшение к машине
+        ApplySpeedUpgrade();
+
+        // Обновляем UI
+        UpdateProgressionUI();
+        UpdateUI();
+
+        // Показываем сообщение о покупке
+        if (resultMessageText != null)
+        {
+            resultMessageText.text = $"Скорость улучшена до уровня {currentSpeedLevel}!";
+            StartCoroutine(ShowMessageForSeconds(2f));
+        }
+    }
+
+    private void ApplySpeedUpgrade()
+    {
+        var carController = vehicleObject.GetComponent<CarController>();
+        if (carController != null)
+        {
+            // Увеличиваем максимальную скорость на фиксированное значение
+            carController.maxSpeed += speedIncreasePerLevel;
+            Debug.Log($"Скорость машины увеличена до {carController.maxSpeed}");
+        }
     }
 
     private void Update()
@@ -178,6 +315,18 @@ public class OrderManager : MonoBehaviour
         {
             // Скрываем указатель, если нет активного заказа
             minimapController.HideDirectionIndicator();
+        }
+
+        // Проверяем разблокировку машины
+        if (!isVehicleUnlocked && totalScore >= pointsRequiredForVehicle)
+        {
+            UnlockVehicle();
+        }
+
+        // Показываем кнопку улучшения только если машина разблокирована
+        if (upgradeButtonObj != null)
+        {
+            upgradeButtonObj.SetActive(isVehicleUnlocked && currentSpeedLevel < maxSpeedLevel);
         }
     }
 
@@ -373,6 +522,16 @@ public class OrderManager : MonoBehaviour
                 timerText.text = $"Осталось времени: {minutes:00}:{seconds:00}";
             }
         }
+    }
+
+    private void UnlockVehicle()
+    {
+        isVehicleUnlocked = true;
+        if (vehicleObject != null)
+        {
+            vehicleObject.SetActive(true);
+        }
+        UpdateProgressionUI();
     }
 }
 

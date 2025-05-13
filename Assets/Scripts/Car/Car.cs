@@ -190,8 +190,12 @@ public class CarController : MonoBehaviour
     [Header("UI элементы")]
     public Button enterExitButton;        // Кнопка для входа/выхода из машины
     public GameObject enterExitButtonObj;  // GameObject кнопки для включения/выключения
+    public Button uiHandbrakeButton;      // Кнопка ручника на UI
+    public GameObject uiHandbrakeButtonObj; // GameObject кнопки ручника на UI
 
     private bool wasInRange = false;     // Флаг для отслеживания изменения состояния
+    private bool playerNearby = false;    // Флаг для отслеживания близости игрока
+    private bool isHandbrakeActive = false; // Флаг активности ручника
 
     // Start is called before the first frame update
     void Start()
@@ -295,11 +299,17 @@ public class CarController : MonoBehaviour
           }
         }
 
-        // Настраиваем кнопку
+        // Настраиваем кнопки
         if (enterExitButton != null && enterExitButtonObj != null)
         {
             enterExitButton.onClick.AddListener(HandleEnterExit);
             enterExitButtonObj.SetActive(false); // Изначально скрываем кнопку
+        }
+
+        if (uiHandbrakeButton != null && uiHandbrakeButtonObj != null)
+        {
+            uiHandbrakeButton.onClick.AddListener(ToggleHandbrake);
+            uiHandbrakeButtonObj.SetActive(false); // Изначально скрываем кнопку
         }
 
         // Находим игрока, если он не назначен
@@ -313,7 +323,32 @@ public class CarController : MonoBehaviour
         {
             characterController = player.GetComponent<CharacterController>();
             playerAnimator = player.GetComponent<Animator>();
-            playerCamera = player.GetComponentInChildren<Camera>();
+            
+            // Получаем камеру игрока
+            if (playerCamera == null)
+            {
+                playerCamera = player.GetComponentInChildren<Camera>();
+                if (playerCamera == null)
+                {
+                    Debug.LogWarning("Не найдена камера игрока!");
+                }
+            }
+        }
+
+        // Проверяем камеру машины
+        if (carCamera == null)
+        {
+            carCamera = GetComponentInChildren<Camera>();
+            if (carCamera == null)
+            {
+                Debug.LogWarning("Не найдена камера машины!");
+            }
+        }
+
+        // Изначально отключаем камеру машины
+        if (carCamera != null)
+        {
+            carCamera.gameObject.SetActive(false);
         }
     }
 
@@ -325,23 +360,32 @@ public class CarController : MonoBehaviour
         {
             float distance = Vector3.Distance(player.transform.position, transform.position);
             bool inRange = distance <= maxEnterDistance;
+            playerNearby = inRange;
 
-            // Показываем или скрываем кнопку в зависимости от расстояния
+            // Показываем или скрываем кнопки в зависимости от расстояния
             if (inRange != wasInRange)
             {
                 if (enterExitButtonObj != null)
                 {
                     enterExitButtonObj.SetActive(inRange);
                 }
+                if (uiHandbrakeButtonObj != null)
+                {
+                    uiHandbrakeButtonObj.SetActive(false); // Скрываем кнопку ручника, когда не в машине
+                }
                 wasInRange = inRange;
             }
         }
         else if (isOccupied)
         {
-            // Если игрок в машине, кнопка всегда видна
+            // Если игрок в машине, показываем обе кнопки
             if (enterExitButtonObj != null && !enterExitButtonObj.activeSelf)
             {
                 enterExitButtonObj.SetActive(true);
+            }
+            if (uiHandbrakeButtonObj != null && !uiHandbrakeButtonObj.activeSelf)
+            {
+                uiHandbrakeButtonObj.SetActive(true);
             }
         }
 
@@ -439,10 +483,12 @@ public class CarController : MonoBehaviour
                 CancelInvoke("DecelerateCar");
                 deceleratingCar = false;
                 Handbrake();
+                isHandbrakeActive = true;
             }
             if (Input.GetKeyUp(KeyCode.Space))
             {
                 RecoverTraction();
+                isHandbrakeActive = false;
             }
             if (!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W))
             {
@@ -460,6 +506,21 @@ public class CarController : MonoBehaviour
         }
 
         AnimateWheelMeshes();
+    }
+
+    void LateUpdate()
+    {
+        // Посадка в машину через кнопку на экране
+        if (playerNearby && !isOccupied && Input.GetKeyDown(KeyCode.E))
+        {
+            TryEnterCar();
+        }
+
+        // Выход из машины через кнопку на экране
+        if (isOccupied && Input.GetKeyDown(KeyCode.F))
+        {
+            ExitCar();
+        }
     }
 
     public void HandleEnterExit()
@@ -492,12 +553,19 @@ public class CarController : MonoBehaviour
     private void EnterCar()
     {
         isOccupied = true;
-        wasInRange = true; // Обновляем флаг при входе в машину
-        
+        wasInRange = true;
+
+        // Переключаем камеры
         if (playerCamera != null)
+        {
+            Debug.Log("Отключаем камеру игрока");
             playerCamera.gameObject.SetActive(false);
+        }
         if (carCamera != null)
+        {
+            Debug.Log("Включаем камеру машины");
             carCamera.gameObject.SetActive(true);
+        }
 
         // Сохраняем родителя и прикрепляем к точке выхода
         playerParent = player.transform.parent;
@@ -532,6 +600,14 @@ public class CarController : MonoBehaviour
             playerRigidbody.angularVelocity = Vector3.zero;
             playerRigidbody.isKinematic = true;
         }
+
+        // Показываем кнопку ручника при входе в машину
+        if (uiHandbrakeButtonObj != null)
+        {
+            uiHandbrakeButtonObj.SetActive(true);
+        }
+
+        Debug.Log("Персонаж сел в машину");
     }
 
     private void ExitCar()
@@ -543,7 +619,19 @@ public class CarController : MonoBehaviour
         }
 
         isOccupied = false;
-        wasInRange = false; // Сбрасываем флаг при выходе из машины
+        wasInRange = false;
+
+        // Переключаем камеры
+        if (carCamera != null)
+        {
+            Debug.Log("Отключаем камеру машины");
+            carCamera.gameObject.SetActive(false);
+        }
+        if (playerCamera != null)
+        {
+            Debug.Log("Включаем камеру игрока");
+            playerCamera.gameObject.SetActive(true);
+        }
 
         // Возвращаем игрока к исходному родителю
         player.transform.SetParent(playerParent);
@@ -569,16 +657,27 @@ public class CarController : MonoBehaviour
         if (playerAnimator != null)
             playerAnimator.enabled = true;
 
-        // Включаем физику игрока
+        // Восстанавливаем физику игрока
         Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
         if (playerRigidbody != null)
+        {
             playerRigidbody.isKinematic = false;
+        }
 
-        // Переключаем камеры
-        if (playerCamera != null)
-            playerCamera.gameObject.SetActive(true);
-        if (carCamera != null)
-            carCamera.gameObject.SetActive(false);
+        // Скрываем кнопку ручника при выходе
+        if (uiHandbrakeButtonObj != null)
+        {
+            uiHandbrakeButtonObj.SetActive(false);
+        }
+
+        // Отключаем ручник при выходе
+        if (isHandbrakeActive)
+        {
+            RecoverTraction();
+            isHandbrakeActive = false;
+        }
+
+        Debug.Log("Персонаж вышел из машины");
     }
 
     // Функция для включения/отключения видимости персонажа
@@ -991,5 +1090,21 @@ public class CarController : MonoBehaviour
 
         driftingAxis = 0f;
       }
+    }
+
+    // Метод для переключения ручника
+    public void ToggleHandbrake()
+    {
+        if (!isOccupied) return;
+
+        isHandbrakeActive = !isHandbrakeActive;
+        if (isHandbrakeActive)
+        {
+            Handbrake();
+        }
+        else
+        {
+            RecoverTraction();
+        }
     }
 }
