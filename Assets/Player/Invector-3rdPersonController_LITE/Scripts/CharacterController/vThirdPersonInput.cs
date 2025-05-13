@@ -12,6 +12,7 @@ namespace Invector.vCharacterController
         public KeyCode jumpInput = KeyCode.Space;
         public KeyCode strafeInput = KeyCode.Tab;
         public KeyCode sprintInput = KeyCode.LeftShift;
+        
 
         [Header("Camera Input")]
         public string rotateCameraXInput = "Mouse X";
@@ -20,6 +21,13 @@ namespace Invector.vCharacterController
         [HideInInspector] public vThirdPersonController cc;
         [HideInInspector] public vThirdPersonCamera tpCamera;
         [HideInInspector] public Camera cameraMain;
+        
+        [Header("Настройки джойстика")]
+        public Joystick joystick;              // Ссылка на компонент джойстика
+        public bool joystickActive = false;    // Флаг активности джойстика
+        public float joystickSensitivity = 1f; // Чувствительность джойстика
+        public float moveSpeed = 5f;
+        private CharacterController controller;
 
         #endregion
 
@@ -27,6 +35,7 @@ namespace Invector.vCharacterController
         {
             InitilizeController();
             InitializeTpCamera();
+            controller = GetComponent<CharacterController>();
         }
 
         protected virtual void FixedUpdate()
@@ -83,8 +92,16 @@ namespace Invector.vCharacterController
 
         public virtual void MoveInput()
         {
-            cc.input.x = Input.GetAxis(horizontalInput);
-            cc.input.z = Input.GetAxis(verticallInput);
+            if (joystickActive && joystick != null)
+            {
+                cc.input.x = joystick.Horizontal * joystickSensitivity;
+                cc.input.z = joystick.Vertical * joystickSensitivity;
+            }
+            else
+            {
+                cc.input.x = Input.GetAxis(horizontalInput);
+                cc.input.z = Input.GetAxis(verticallInput);
+            }
         }
 
         protected virtual void CameraInput()

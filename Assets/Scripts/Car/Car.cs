@@ -166,13 +166,32 @@ public class CarController : MonoBehaviour
     private Camera playerCamera; // Добавляем переменную для хранения камеры персонажа
     public Transform exitPoint; // Точка выхода из машины
 
-    public float maxEnterDistance = 1f; // Максимальное расстояние для входа в машину
-   
+    [Header("Настройки входа/выхода")]
+    public float maxEnterDistance = 0.3f;   // Максимальное расстояние для входа в машину
+    public bool isOccupied = false;      // Занята ли машина
+    public GameObject player;            // Ссылка на игрока
+
+    private Transform playerParent;       // Сохраняем родителя игрока
     private CharacterController characterController;
-    private MonoBehaviour vThirdPersonInputScript;
-    private Transform playerParent;
-    private Animator playerAnimator; // Добавляем ссылку на аниматор
-    private MonoBehaviour[] playerMovementScripts; // Для хранения всех скриптов движения
+    private MonoBehaviour[] playerMovementScripts;
+    private Animator playerAnimator;
+
+    [Header("Настройки джойстика")]
+    public Joystick driveJoystick;      // Джойстик для движения
+    public Joystick steeringJoystick;    // Джойстик для поворота
+    public bool useMobileControls = false; // Использовать ли мобильное управление
+    
+    [Header("Чувствительность управления")]
+    [Range(0.1f, 2f)]
+    public float joystickSensitivity = 1f;    // Чувствительность джойстика
+    [Range(0.1f, 2f)]
+    public float steeringSensitivity = 1f;    // Чувствительность поворота
+
+    [Header("UI элементы")]
+    public Button enterExitButton;        // Кнопка для входа/выхода из машины
+    public GameObject enterExitButtonObj;  // GameObject кнопки для включения/выключения
+
+    private bool wasInRange = false;     // Флаг для отслеживания изменения состояния
 
     // Start is called before the first frame update
     void Start()
@@ -276,27 +295,56 @@ public class CarController : MonoBehaviour
           }
         }
 
-        // Убедимся, что камера машины изначально выключена
-        if (carCamera != null)
+        // Настраиваем кнопку
+        if (enterExitButton != null && enterExitButtonObj != null)
         {
-            carCamera.gameObject.SetActive(false);
+            enterExitButton.onClick.AddListener(HandleEnterExit);
+            enterExitButtonObj.SetActive(false); // Изначально скрываем кнопку
         }
 
-        // Получаем компоненты у персонажа
+        // Находим игрока, если он не назначен
+        if (player == null)
+        {
+            player = GameObject.FindGameObjectWithTag("Player");
+        }
+
+        // Получаем компоненты игрока
         if (player != null)
         {
             characterController = player.GetComponent<CharacterController>();
-            vThirdPersonInputScript = player.GetComponent("vThirdPersonInput") as MonoBehaviour;
+            playerAnimator = player.GetComponent<Animator>();
+            playerCamera = player.GetComponentInChildren<Camera>();
         }
     }
-  public bool isOccupied = false;
-  public bool playerNearby = false;
-  public GameObject player;
-    public Transform seatPosition; // Точка, куда сажать персонажа
 
     // Update is called once per frame
-    void Update()
+    protected virtual void Update()
     {
+        // Проверяем расстояние только если игрок не в машине
+        if (!isOccupied && player != null)
+        {
+            float distance = Vector3.Distance(player.transform.position, transform.position);
+            bool inRange = distance <= maxEnterDistance;
+
+            // Показываем или скрываем кнопку в зависимости от расстояния
+            if (inRange != wasInRange)
+            {
+                if (enterExitButtonObj != null)
+                {
+                    enterExitButtonObj.SetActive(inRange);
+                }
+                wasInRange = inRange;
+            }
+        }
+        else if (isOccupied)
+        {
+            // Если игрок в машине, кнопка всегда видна
+            if (enterExitButtonObj != null && !enterExitButtonObj.activeSelf)
+            {
+                enterExitButtonObj.SetActive(true);
+            }
+        }
+
         // Машина не едет, пока персонаж не сел
         if (!isOccupied)
         {
@@ -316,143 +364,117 @@ public class CarController : MonoBehaviour
         localVelocityX = transform.InverseTransformDirection(carRigidbody.linearVelocity).x;
         localVelocityZ = transform.InverseTransformDirection(carRigidbody.linearVelocity).z;
 
-        //CAR PHYSICS
-        if (useTouchControls && touchControlsSetup){
+        if (useMobileControls && driveJoystick != null)
+        {
+            // Управление газом и тормозом через основной джойстик
+            float throttleInput = driveJoystick.Vertical * joystickSensitivity;
+            
+            if (throttleInput > 0.1f)
+            {
+                CancelInvoke("DecelerateCar");
+                deceleratingCar = false;
+                throttleAxis = throttleInput;
+                GoForward();
+            }
+            else if (throttleInput < -0.1f)
+            {
+                CancelInvoke("DecelerateCar");
+                deceleratingCar = false;
+                throttleAxis = throttleInput;
+                GoReverse();
+            }
+            else
+            {
+                ThrottleOff();
+                if (!deceleratingCar)
+                {
+                    InvokeRepeating("DecelerateCar", 0f, 0.1f);
+                    deceleratingCar = true;
+                }
+            }
 
-          if(throttlePTI.buttonPressed){
-            CancelInvoke("DecelerateCar");
-            deceleratingCar = false;
-            GoForward();
-          }
-          if(reversePTI.buttonPressed){
-            CancelInvoke("DecelerateCar");
-            deceleratingCar = false;
-            GoReverse();
-          }
+            // Управление поворотом через второй джойстик или через горизонтальную ось основного джойстика
+            float steerInput = steeringJoystick != null ? 
+                steeringJoystick.Horizontal * steeringSensitivity : 
+                driveJoystick.Horizontal * steeringSensitivity;
 
-          if(turnLeftPTI.buttonPressed){
-            TurnLeft();
-          }
-          if(turnRightPTI.buttonPressed){
-            TurnRight();
-          }
-          if(handbrakePTI.buttonPressed){
-            CancelInvoke("DecelerateCar");
-            deceleratingCar = false;
-            Handbrake();
-          }
-          if(!handbrakePTI.buttonPressed){
-            RecoverTraction();
-          }
-          if((!throttlePTI.buttonPressed && !reversePTI.buttonPressed)){
-            ThrottleOff();
-          }
-          if((!reversePTI.buttonPressed && !throttlePTI.buttonPressed) && !handbrakePTI.buttonPressed && !deceleratingCar){
-            InvokeRepeating("DecelerateCar", 0f, 0.1f);
-            deceleratingCar = true;
-          }
-          if(!turnLeftPTI.buttonPressed && !turnRightPTI.buttonPressed && steeringAxis != 0f){
-            ResetSteeringAngle();
-          }
-
-        }else{
-
-          if(Input.GetKey(KeyCode.W)){
-            CancelInvoke("DecelerateCar");
-            deceleratingCar = false;
-            GoForward();
-          }
-          if(Input.GetKey(KeyCode.S)){
-            CancelInvoke("DecelerateCar");
-            deceleratingCar = false;
-            GoReverse();
-          }
-
-          if(Input.GetKey(KeyCode.A)){
-            TurnLeft();
-          }
-          if(Input.GetKey(KeyCode.D)){
-            TurnRight();
-          }
-          if(Input.GetKey(KeyCode.Space)){
-            CancelInvoke("DecelerateCar");
-            deceleratingCar = false;
-            Handbrake();
-          }
-          if(Input.GetKeyUp(KeyCode.Space)){
-            RecoverTraction();
-          }
-          if((!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W))){
-            ThrottleOff();
-          }
-          if((!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W)) && !Input.GetKey(KeyCode.Space) && !deceleratingCar){
-            InvokeRepeating("DecelerateCar", 0f, 0.1f);
-            deceleratingCar = true;
-          }
-          if(!Input.GetKey(KeyCode.A) && !Input.GetKey(KeyCode.D) && steeringAxis != 0f){
-            ResetSteeringAngle();
-          }
-
+            if (steerInput > 0.1f)
+            {
+                TurnRight();
+            }
+            else if (steerInput < -0.1f)
+            {
+                TurnLeft();
+            }
+            else if (steeringAxis != 0f)
+            {
+                ResetSteeringAngle();
+            }
+        }
+        else
+        {
+            // Стандартное управление с клавиатуры
+            if (Input.GetKey(KeyCode.W))
+            {
+                CancelInvoke("DecelerateCar");
+                deceleratingCar = false;
+                GoForward();
+            }
+            if (Input.GetKey(KeyCode.S))
+            {
+                CancelInvoke("DecelerateCar");
+                deceleratingCar = false;
+                GoReverse();
+            }
+            if (Input.GetKey(KeyCode.A))
+            {
+                TurnLeft();
+            }
+            if (Input.GetKey(KeyCode.D))
+            {
+                TurnRight();
+            }
+            if (Input.GetKey(KeyCode.Space))
+            {
+                CancelInvoke("DecelerateCar");
+                deceleratingCar = false;
+                Handbrake();
+            }
+            if (Input.GetKeyUp(KeyCode.Space))
+            {
+                RecoverTraction();
+            }
+            if (!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W))
+            {
+                ThrottleOff();
+            }
+            if (!Input.GetKey(KeyCode.S) && !Input.GetKey(KeyCode.W) && !Input.GetKey(KeyCode.Space) && !deceleratingCar)
+            {
+                InvokeRepeating("DecelerateCar", 0f, 0.1f);
+                deceleratingCar = true;
+            }
+            if (!Input.GetKey(KeyCode.A) && !Input.GetKey(KeyCode.D) && steeringAxis != 0f)
+            {
+                ResetSteeringAngle();
+            }
         }
 
         AnimateWheelMeshes();
     }
 
-void OnTriggerEnter(Collider other)
-{
-    if (other.CompareTag("Player"))
+    public void HandleEnterExit()
     {
-        playerNearby = true;
-        player = other.gameObject;
-        // Сохраняем ссылку на камеру персонажа сразу при входе в триггер
-        playerCamera = player.GetComponentInChildren<Camera>();
-        Debug.Log("Нажми E, чтобы сесть в машину");
-    }
-}
-
-void OnTriggerExit(Collider other)
-{
-    if (other.CompareTag("Player"))
-    {
-        playerNearby = false;
-        player = null;
-    }
-}
-
-// Функция для включения/отключения видимости персонажа
-void SetPlayerVisible(bool visible)
-{
-    foreach (var renderer in player.GetComponentsInChildren<Renderer>())
-        renderer.enabled = visible;
-}
-
-// Функция для установки прозрачности персонажа
-void SetPlayerTransparency(float alpha)
-{
-    foreach (var renderer in player.GetComponentsInChildren<Renderer>())
-    {
-        foreach (var mat in renderer.materials)
+        if (!isOccupied)
         {
-            Color color = mat.color;
-            color.a = alpha;
-            mat.color = color;
-            // Важно: материал должен поддерживать прозрачность
-            mat.SetFloat("_Mode", 3);
-            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            mat.SetInt("_ZWrite", 0);
-            mat.DisableKeyword("_ALPHATEST_ON");
-            mat.EnableKeyword("_ALPHABLEND_ON");
-            mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-            mat.renderQueue = 3000;
+            TryEnterCar();
+        }
+        else
+        {
+            ExitCar();
         }
     }
-}
 
-void LateUpdate()
-{
-    // Посадка в машину
-    if (playerNearby && !isOccupied && Input.GetKeyDown(KeyCode.E))
+    private void TryEnterCar()
     {
         if (player != null)
         {
@@ -463,112 +485,113 @@ void LateUpdate()
                 return;
             }
 
-            isOccupied = true;
-            if (playerCamera != null)
-                playerCamera.gameObject.SetActive(false);
-            if (carCamera != null)
-                carCamera.gameObject.SetActive(true);
+            EnterCar();
+        }
+    }
 
-            // Сохраняем оригинального родителя персонажа
-            playerParent = player.transform.parent;
-            // Прикрепляем персонажа к точке выхода
-            player.transform.SetParent(exitPoint);
+    private void EnterCar()
+    {
+        isOccupied = true;
+        wasInRange = true; // Обновляем флаг при входе в машину
+        
+        if (playerCamera != null)
+            playerCamera.gameObject.SetActive(false);
+        if (carCamera != null)
+            carCamera.gameObject.SetActive(true);
 
-            // Перемещаем персонажа на точку выхода и делаем полностью прозрачным
-            player.transform.localPosition = Vector3.zero;
-            player.transform.localRotation = Quaternion.identity;
-            SetPlayerTransparency(0f);
+        // Сохраняем родителя и прикрепляем к точке выхода
+        playerParent = player.transform.parent;
+        player.transform.SetParent(exitPoint);
+        player.transform.localPosition = Vector3.zero;
+        player.transform.localRotation = Quaternion.identity;
+        
+        // Отключаем видимость игрока
+        SetPlayerVisible(false);
 
-            // Отключаем все компоненты управления персонажем
-            if (characterController != null)
-            {
-                characterController.enabled = false;
-            }
+        // Отключаем управление персонажем
+        if (characterController != null)
+            characterController.enabled = false;
 
-            // Отключаем все скрипты движения
-            playerMovementScripts = player.GetComponents<MonoBehaviour>();
+        // Отключаем все скрипты движения
+        playerMovementScripts = player.GetComponents<MonoBehaviour>();
+        foreach (var script in playerMovementScripts)
+        {
+            if (script != this && script.enabled)
+                script.enabled = false;
+        }
+
+        // Отключаем аниматор
+        if (playerAnimator != null)
+            playerAnimator.enabled = false;
+
+        // Отключаем физику игрока
+        Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
+        if (playerRigidbody != null)
+        {
+            playerRigidbody.linearVelocity = Vector3.zero;
+            playerRigidbody.angularVelocity = Vector3.zero;
+            playerRigidbody.isKinematic = true;
+        }
+    }
+
+    private void ExitCar()
+    {
+        if (Mathf.Abs(carSpeed) > 1f)
+        {
+            Debug.Log("Нельзя выйти из машины на ходу! Остановитесь сначала.");
+            return;
+        }
+
+        isOccupied = false;
+        wasInRange = false; // Сбрасываем флаг при выходе из машины
+
+        // Возвращаем игрока к исходному родителю
+        player.transform.SetParent(playerParent);
+        
+        // Включаем видимость игрока
+        SetPlayerVisible(true);
+
+        // Включаем управление персонажем
+        if (characterController != null)
+            characterController.enabled = true;
+
+        // Включаем все скрипты движения
+        if (playerMovementScripts != null)
+        {
             foreach (var script in playerMovementScripts)
             {
-                if (script != this && script.enabled)
-                {
-                    script.enabled = false;
-                }
+                if (script != this)
+                    script.enabled = true;
             }
-
-            // Отключаем аниматор
-            playerAnimator = player.GetComponent<Animator>();
-            if (playerAnimator != null)
-            {
-                playerAnimator.enabled = false;
-            }
-
-            // Останавливаем все физические силы на персонаже
-            Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
-            if (playerRigidbody != null)
-            {
-                playerRigidbody.linearVelocity = Vector3.zero;
-                playerRigidbody.angularVelocity = Vector3.zero;
-                playerRigidbody.isKinematic = true;
-            }
-
-            Debug.Log("Персонаж сел в машину");
         }
+
+        // Включаем аниматор
+        if (playerAnimator != null)
+            playerAnimator.enabled = true;
+
+        // Включаем физику игрока
+        Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
+        if (playerRigidbody != null)
+            playerRigidbody.isKinematic = false;
+
+        // Переключаем камеры
+        if (playerCamera != null)
+            playerCamera.gameObject.SetActive(true);
+        if (carCamera != null)
+            carCamera.gameObject.SetActive(false);
     }
 
-    // Выход из машины
-    if (isOccupied && Input.GetKeyDown(KeyCode.F))
+    // Функция для включения/отключения видимости персонажа
+    private void SetPlayerVisible(bool visible)
     {
-        isOccupied = false;
-        if (player != null)
+        if (player == null) return;
+
+        Renderer[] renderers = player.GetComponentsInChildren<Renderer>();
+        foreach (Renderer renderer in renderers)
         {
-            // Возвращаем персонажа к оригинальному родителю
-            player.transform.SetParent(playerParent);
-            
-            // Делаем персонажа полностью видимым
-            SetPlayerTransparency(1f);
-
-            // Включаем все компоненты управления обратно
-            if (characterController != null)
-            {
-                characterController.enabled = true;
-            }
-
-            // Включаем все скрипты движения
-            if (playerMovementScripts != null)
-            {
-                foreach (var script in playerMovementScripts)
-                {
-                    if (script != this)
-                    {
-                        script.enabled = true;
-                    }
-                }
-            }
-
-            // Включаем аниматор
-            if (playerAnimator != null)
-            {
-                playerAnimator.enabled = true;
-            }
-
-            // Восстанавливаем физику персонажа
-            Rigidbody playerRigidbody = player.GetComponent<Rigidbody>();
-            if (playerRigidbody != null)
-            {
-                playerRigidbody.isKinematic = false;
-            }
-
-            if (playerCamera != null)
-                playerCamera.gameObject.SetActive(true);
-            if (carCamera != null)
-                carCamera.gameObject.SetActive(false);
-
-            Debug.Log("Персонаж вышел из машины");
+            renderer.enabled = visible;
         }
     }
-}
-
-   
 
     // This method converts the car speed data from float to string, and then set the text of the UI carSpeedText with this value.
     public void CarSpeedUI(){
@@ -969,5 +992,4 @@ void LateUpdate()
         driftingAxis = 0f;
       }
     }
-
 }
