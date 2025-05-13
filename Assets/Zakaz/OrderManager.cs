@@ -30,6 +30,9 @@ public class OrderManager : MonoBehaviour
     public Transform player; // Ссылка на персонажа
     public float interactionDistance = 0.1f; // Расстояние взаимодействия
 
+    [Header("Minimap Settings")]
+    public MinimapController minimapController; // Ссылка на контроллер миникарты
+
     [Header("Timer Settings")]
     public float pickupTimeLimit = 120f; // 2 минуты на взятие заказа
     public float deliveryTimeLimit = 180f; // 3 минуты на доставку
@@ -59,6 +62,19 @@ public class OrderManager : MonoBehaviour
         {
             Debug.LogError("Не назначен персонаж в OrderManager!");
             return;
+        }
+
+        // Проверка компонентов миникарты
+        if (minimapController == null)
+        {
+            Debug.LogError("Не назначен контроллер миникарты в OrderManager!");
+        }
+
+        // Скрываем все точки сдачи при старте
+        HideAllPoints();
+        if (minimapController != null)
+        {
+            minimapController.HideDirectionIndicator();
         }
 
         // Проверка UI элементов
@@ -99,6 +115,26 @@ public class OrderManager : MonoBehaviour
     {
         if (currentOrder != null && player != null)
         {
+            // Обновляем указатель направления на миникарте
+            if (minimapController != null)
+            {
+                Vector3 targetPosition = Vector3.zero;
+                bool showIndicator = false;
+
+                if (currentStatus == OrderStatus.PickupOrder)
+                {
+                    targetPosition = currentOrder.pickupPoint.position;
+                    showIndicator = true;
+                }
+                else if (currentStatus == OrderStatus.DeliverOrder)
+                {
+                    targetPosition = currentOrder.deliveryPoint.position;
+                    showIndicator = true;
+                }
+
+                minimapController.UpdateDirectionIndicator(targetPosition, showIndicator);
+            }
+
             // Обновление таймеров
             if (currentStatus == OrderStatus.PickupOrder)
             {
@@ -138,6 +174,50 @@ public class OrderManager : MonoBehaviour
 
             UpdateTimerUI();
         }
+        else if (minimapController != null)
+        {
+            // Скрываем указатель, если нет активного заказа
+            minimapController.HideDirectionIndicator();
+        }
+    }
+
+    private void HideAllPoints()
+    {
+        foreach (Order order in orders)
+        {
+            if (order.pickupPoint != null)
+            {
+                order.pickupPoint.gameObject.SetActive(false);
+            }
+            if (order.deliveryPoint != null)
+            {
+                order.deliveryPoint.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private void ShowOrderPoints(Order order)
+    {
+        if (order.pickupPoint != null)
+        {
+            order.pickupPoint.gameObject.SetActive(true);
+        }
+        if (order.deliveryPoint != null)
+        {
+            order.deliveryPoint.gameObject.SetActive(true);
+        }
+    }
+
+    private void HideOrderPoints(Order order)
+    {
+        if (order.pickupPoint != null)
+        {
+            order.pickupPoint.gameObject.SetActive(false);
+        }
+        if (order.deliveryPoint != null)
+        {
+            order.deliveryPoint.gameObject.SetActive(false);
+        }
     }
 
     private void PickupOrder()
@@ -166,17 +246,22 @@ public class OrderManager : MonoBehaviour
             StartCoroutine(ShowMessageForSeconds(4f));
         }
         Debug.Log($"Заказ {currentOrder.orderName} доставлен! Получено очков за доставку: {deliveryScore}. Всего очков за заказ: {currentScore}");
+        HideOrderPoints(currentOrder);
+        if (minimapController != null)
+        {
+            minimapController.HideDirectionIndicator();
+        }
         currentOrder = null;
-        pickupScore = 0; // Сбрасываем очки за взятие
+        pickupScore = 0;
         StartCoroutine(WaitForNewOrder());
     }
 
     private void FailOrder(string reason)
     {
         currentStatus = OrderStatus.OrderFailed;
-        currentScore = -30; // Штраф за провал заказа
+        currentScore = -30;
         totalScore += currentScore;
-        pickupScore = 0; // Сбрасываем очки за взятие
+        pickupScore = 0;
         UpdateUI();
         if (resultMessageText != null)
         {
@@ -184,6 +269,11 @@ public class OrderManager : MonoBehaviour
             StartCoroutine(ShowMessageForSeconds(4f));
         }
         Debug.Log($"Заказ {currentOrder.orderName} провален! Причина: {reason}");
+        HideOrderPoints(currentOrder);
+        if (minimapController != null)
+        {
+            minimapController.HideDirectionIndicator();
+        }
         currentOrder = null;
         StartCoroutine(WaitForNewOrder());
     }
@@ -191,8 +281,12 @@ public class OrderManager : MonoBehaviour
     private IEnumerator WaitForNewOrder()
     {
         currentStatus = OrderStatus.WaitingForOrder;
-        currentScore = 0; // Сбрасываем очки только при ожидании нового заказа
-        pickupScore = 0; // Сбрасываем очки за взятие
+        currentScore = 0;
+        pickupScore = 0;
+        if (minimapController != null)
+        {
+            minimapController.HideDirectionIndicator();
+        }
         UpdateUI();
         
         timeUntilNextOrder = Random.Range(minTimeBetweenOrders, maxTimeBetweenOrders);
@@ -202,6 +296,7 @@ public class OrderManager : MonoBehaviour
         {
             int randomIndex = Random.Range(0, orders.Count);
             currentOrder = orders[randomIndex];
+            ShowOrderPoints(currentOrder);
             currentStatus = OrderStatus.PickupOrder;
             currentPickupTimer = pickupTimeLimit;
             UpdateUI();
