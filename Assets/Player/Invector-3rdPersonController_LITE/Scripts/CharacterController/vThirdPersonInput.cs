@@ -92,6 +92,7 @@ namespace Invector.vCharacterController
 
         public virtual void MoveInput()
         {
+            // Используем джойстик только для движения, если он активен
             if (joystickActive && joystick != null)
             {
                 cc.input.x = joystick.Horizontal * joystickSensitivity;
