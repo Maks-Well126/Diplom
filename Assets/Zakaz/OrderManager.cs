@@ -502,6 +502,9 @@ public class OrderManager : MonoBehaviour
         {
             totalScoreText.text = $"Всего очков: {totalScore}";
         }
+
+        // Добавляем вызов для обновления UI прокачки
+        UpdateProgressionUI(); 
     }
 
     private void UpdateTimerUI()
