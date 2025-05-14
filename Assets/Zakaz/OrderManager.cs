@@ -74,6 +74,7 @@ public class OrderManager : MonoBehaviour
     public bool isVehicleUnlocked = false;
     public GameObject vehicleObject; // Ссылка на объект машины
     public GameObject playerObject; // Ссылка на объект игрока
+    public Transform vehicleStartPoint; // Точка появления машины и персонажа
 
     [Header("UI Elements")]
     public TextMeshProUGUI vehicleUnlockText; // Текст для отображения прогресса разблокировки машины
@@ -534,6 +535,25 @@ public class OrderManager : MonoBehaviour
         {
             vehicleObject.SetActive(true);
         }
+
+        // Отключаем управление и CharacterController
+        var controller = player.GetComponent<CharacterController>();
+        if (controller != null) controller.enabled = false;
+
+        // Если есть Rigidbody
+        var rb = player.GetComponent<Rigidbody>();
+        if (rb != null) rb.isKinematic = true;
+
+        Debug.Log("Телепортируем в: " + vehicleStartPoint.position);
+        Debug.Log("Позиция персонажа ДО: " + player.position);
+        player.position = vehicleStartPoint.position;
+        player.rotation = vehicleStartPoint.rotation;
+        Debug.Log("Позиция персонажа ПОСЛЕ: " + player.position);
+
+        // Включаем обратно
+        if (controller != null) controller.enabled = true;
+        if (rb != null) rb.isKinematic = false;
+
         UpdateProgressionUI();
     }
 }
