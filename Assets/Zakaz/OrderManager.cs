@@ -200,7 +200,7 @@ public class OrderManager : MonoBehaviour
                 var buttonText = upgradeButton.GetComponentInChildren<TextMeshProUGUI>();
                 if (buttonText != null)
                 {
-                    buttonText.text = $"Улучшить скорость ({upgradeCost} очков)";
+                    buttonText.text = $"Улучшить: ({upgradeCost})";
                 }
             }
         }
