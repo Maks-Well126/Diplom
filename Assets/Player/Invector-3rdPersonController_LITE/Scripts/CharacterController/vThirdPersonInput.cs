@@ -29,6 +29,11 @@ namespace Invector.vCharacterController
         public float moveSpeed = 5f;
         private CharacterController controller;
 
+        [Header("Второй джойстик для камеры")]
+        public Joystick cameraJoystick; // Ссылка на второй джойстик
+        public bool cameraJoystickActive = false; // Флаг активности второго джойстика
+        public float cameraJoystickSensitivity = 1f; // Чувствительность второго джойстика
+
         #endregion
 
         protected virtual void Start()
@@ -125,8 +130,17 @@ namespace Invector.vCharacterController
             if (tpCamera == null)
                 return;
 
-            var Y = Input.GetAxis(rotateCameraYInput);
-            var X = Input.GetAxis(rotateCameraXInput);
+            float X, Y;
+            if (cameraJoystickActive && cameraJoystick != null)
+            {
+                X = cameraJoystick.Horizontal * cameraJoystickSensitivity;
+                Y = cameraJoystick.Vertical * cameraJoystickSensitivity;
+            }
+            else
+            {
+                Y = Input.GetAxis(rotateCameraYInput);
+                X = Input.GetAxis(rotateCameraXInput);
+            }
 
             tpCamera.RotateCamera(X, Y);
         }
